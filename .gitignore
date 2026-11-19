@@ -1,0 +1,11 @@
+node_modules/
+dist/
+server/dist/
+web/dist/
+server/data/
+.claude-backup-*/
+docs/.frame-check.jpg
+.env
+.env.*
+*.log
+.DS_Store

@@ -1,0 +1,4 @@
+{
+  "mode": "manual",
+  "input": [{ "json": { "orderId": "A-1" } }, { "json": { "orderId": "A-2" } }]
+}

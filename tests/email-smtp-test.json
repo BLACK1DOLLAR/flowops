@@ -1,0 +1,18 @@
+{
+  "node": {
+    "id": "email-test",
+    "name": "Send Email",
+    "type": "emailSend",
+    "position": { "x": 0, "y": 0 },
+    "parameters": {
+      "to": "team@flowops.dev",
+      "subject": "SMTP transport check",
+      "body": "<p>Hello from FlowOps</p>",
+      "bodyType": "html",
+      "from": "FlowOps <brief@flowops.dev>",
+      "dryRun": false
+    },
+    "credentials": { "smtp": "SMTP_CRED_ID" }
+  },
+  "input": [{ "json": { "ok": true } }]
+}

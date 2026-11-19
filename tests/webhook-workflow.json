@@ -1,0 +1,11 @@
+{
+  "name": "Webhook demo",
+  "settings": {},
+  "nodes": [
+    { "id": "w1", "name": "Webhook", "type": "webhook", "position": { "x": 0, "y": 0 }, "parameters": { "path": "orders", "method": "POST", "hmacSecret": "" } },
+    { "id": "w2", "name": "Transform", "type": "code", "position": { "x": 200, "y": 0 }, "parameters": { "mode": "runOnceForAllItems", "jsCode": "const payload = $input.first().json;\nreturn [{ json: { received: payload.body, summary: `Order ${payload.body.orderId} received via ${payload.method}` } }];" } }
+  ],
+  "connections": [
+    { "source": "w1", "sourceOutput": 0, "target": "w2", "targetInput": 0 }
+  ]
+}

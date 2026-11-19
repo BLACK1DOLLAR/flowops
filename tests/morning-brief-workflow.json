@@ -1,0 +1,113 @@
+{
+  "name": "Morning Email Brief",
+  "active": false,
+  "tags": [
+    "email",
+    "daily"
+  ],
+  "settings": {},
+  "nodes": [
+    {
+      "id": "sched_1",
+      "name": "Every Morning @ 8",
+      "type": "schedule",
+      "position": {
+        "x": 0,
+        "y": 30
+      },
+      "parameters": {
+        "cron": "0 8 * * *"
+      },
+      "credentials": {}
+    },
+    {
+      "id": "brief_2",
+      "name": "Build Brief Data",
+      "type": "code",
+      "position": {
+        "x": 330,
+        "y": 110
+      },
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Collects everything the morning brief needs. Swap these\n// arrays for real sources (DB, API, calendar) when you wire it up.\nconst now = new Date();\nconst dayOfYear = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000);\nconst backlog = [\n  'Ship the webhook retry backoff',\n  'Review DAG engine error routing',\n  'Draft the Q4 automation report',\n  'Triage failed executions from yesterday',\n  'Document the SMTP credential setup',\n];\n\nreturn [{\n  json: {\n    to: 'team@flowops.dev',\n    dateLabel: now.toLocaleDateString('en-GB', {\n      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',\n    }),\n    highlights: [\n      `${3 + (dayOfYear % 4)} workflows ran overnight`,\n      `${1 + (dayOfYear % 3)} execution(s) need a second look`,\n      'Next maintenance window: Friday 18:00',\n    ],\n    focus: [backlog[dayOfYear % backlog.length], backlog[(dayOfYear + 2) % backlog.length]],\n    metrics: {\n      'Runs today': 12 + (dayOfYear % 9),\n      'Success rate': '98.4%',\n      'Queue depth': 0,\n    },\n  },\n}];"
+      },
+      "credentials": {}
+    },
+    {
+      "id": "draft_3",
+      "name": "Draft Email",
+      "type": "aiAgent",
+      "position": {
+        "x": 660,
+        "y": 30
+      },
+      "parameters": {
+        "provider": "local",
+        "model": "template-v1",
+        "system": "You are an executive assistant. Write a short, friendly morning brief in light markdown: ## for section headings and - for bullets.",
+        "prompt": "Write the morning brief for {{ $json.dateLabel }}. Highlights: {{ $json.highlights }}. Focus areas: {{ $json.focus }}.",
+        "temperature": 0.4
+      },
+      "credentials": {}
+    },
+    {
+      "id": "compose_4",
+      "name": "Compose Message",
+      "type": "code",
+      "position": {
+        "x": 990,
+        "y": 110
+      },
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Turns the drafted markdown into a ready-to-send html email.\nconst text = String($input.first().json.text ?? '');\nconst esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst blocks = [];\nlet list = null;\nconst closeList = () => {\n  if (list) { blocks.push('</' + list + '>'); list = null; }\n};\nconst openList = (kind, style) => {\n  if (list === kind) return;\n  closeList();\n  blocks.push('<' + kind + ' style=\"' + style + '\">');\n  list = kind;\n};\n\nfor (const raw of text.split('\\n')) {\n  const line = raw.trim();\n  if (!line) { closeList(); continue; }\n\n  if (/^#{2,3}\\s+/.test(line)) {\n    closeList();\n    const title = esc(line.replace(/^#{2,3}\\s+/, ''));\n    blocks.push('<h3 style=\"margin:24px 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#FF6D5A\">' + title + '</h3>');\n    continue;\n  }\n  if (/^[-*]\\s+/.test(line)) {\n    openList('ul', 'margin:0 0 16px 20px;padding:0');\n    blocks.push('<li style=\"margin:6px 0\">' + esc(line.replace(/^[-*]\\s+/, '')) + '</li>');\n    continue;\n  }\n  const numbered = /^(\\d+)\\.\\s+(.*)$/.exec(line);\n  if (numbered) {\n    openList('ol', 'margin:0 0 16px 20px;padding:0');\n    blocks.push('<li style=\"margin:6px 0\">' + esc(numbered[2]) + '</li>');\n    continue;\n  }\n  closeList();\n  blocks.push('<p style=\"margin:0 0 12px\">' + esc(line) + '</p>');\n}\ncloseList();\n\nconst html = '<div style=\"font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.65;color:#18191C;max-width:560px\">' + blocks.join('') + '</div>';\n\nreturn [{\n  json: {\n    to: 'team@flowops.dev',\n    subject: 'Morning brief — ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }),\n    html,\n    text,\n  },\n}];"
+      },
+      "credentials": {}
+    },
+    {
+      "id": "send_5",
+      "name": "Send Email",
+      "type": "emailSend",
+      "position": {
+        "x": 1320,
+        "y": 30
+      },
+      "parameters": {
+        "to": "{{ $json.to }}",
+        "subject": "{{ $json.subject }}",
+        "body": "{{ $json.html }}",
+        "bodyType": "html",
+        "from": "FlowOps Daily <brief@flowops.dev>",
+        "dryRun": false
+      },
+      "credentials": {}
+    }
+  ],
+  "connections": [
+    {
+      "source": "sched_1",
+      "sourceOutput": 0,
+      "target": "brief_2",
+      "targetInput": 0
+    },
+    {
+      "source": "brief_2",
+      "sourceOutput": 0,
+      "target": "draft_3",
+      "targetInput": 0
+    },
+    {
+      "source": "draft_3",
+      "sourceOutput": 0,
+      "target": "compose_4",
+      "targetInput": 0
+    },
+    {
+      "source": "compose_4",
+      "sourceOutput": 0,
+      "target": "send_5",
+      "targetInput": 0
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "name": "API smoke test",
+  "nodes": [
+    { "id": "n1", "name": "Manual", "type": "manualTrigger", "position": { "x": 0, "y": 0 }, "parameters": {} },
+    { "id": "n2", "name": "Shape Data", "type": "code", "position": { "x": 200, "y": 0 }, "parameters": { "mode": "runOnceForAllItems", "jsCode": "const items = $input.all();\nreturn items.map(i => ({ json: { ...i.json, score: 42, kind: i.json.kind ?? 'a' } }));" } },
+    { "id": "n3", "name": "Is High Score", "type": "if", "position": { "x": 400, "y": 0 }, "parameters": { "left": "{{ $json.score }}", "operator": "gt", "right": "40" } },
+    { "id": "n4", "name": "High", "type": "httpRequest", "position": { "x": 600, "y": -60 }, "parameters": { "method": "GET", "url": "https://httpbin.org/status/200", "headers": {}, "body": "", "timeout": 15000 } },
+    { "id": "n5", "name": "Low", "type": "wait", "position": { "x": 600, "y": 60 }, "parameters": { "ms": 100 } }
+  ],
+  "connections": [
+    { "source": "n1", "sourceOutput": 0, "target": "n2", "targetInput": 0 },
+    { "source": "n2", "sourceOutput": 0, "target": "n3", "targetInput": 0 },
+    { "source": "n3", "sourceOutput": 0, "target": "n4", "targetInput": 0 },
+    { "source": "n3", "sourceOutput": 1, "target": "n5", "targetInput": 0 }
+  ]
+}

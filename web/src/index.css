@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #18191c;
+  --color-surface: #232429;
+  --color-surface-2: #2a2b31;
+  --color-surface-3: #33343b;
+  --color-line: #33343a;
+  --color-line-strong: #46474f;
+  --color-ink: #e8eaed;
+  --color-ink-dim: #9ea4ad;
+  --color-ink-faint: #6f757e;
+  --color-accent: #ff6d5a;
+  --color-accent-strong: #ff8471;
+  --color-accent-soft: rgba(255, 109, 90, 0.14);
+  --color-ok: #3dd68c;
+  --color-err: #e5484d;
+  --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+/* The app is a fixed full-screen editor: never let the page itself scroll. */
+html, body {
+  overflow: hidden;
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(255, 109, 90, 0.35);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* Scrollbars */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--color-surface-3); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* --- React Flow overrides --- */
+.react-flow__handle {
+  width: 11px;
+  height: 11px;
+  background: var(--color-surface-2);
+  border: 2px solid var(--color-line-strong);
+}
+
+.react-flow__handle:hover, .react-flow__handle.connectionindicator:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.react-flow__handle-right.handle-out-true { border-color: var(--color-ok); }
+.react-flow__handle-right.handle-out-false { border-color: var(--color-err); }
+
+.react-flow__edge-path { stroke: var(--color-line-strong); stroke-width: 1.5; }
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path { stroke: var(--color-accent); }
+
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: var(--color-accent);
+  stroke-dasharray: 6 6;
+  animation: dashflow 0.5s linear infinite;
+}
+
+@keyframes dashflow {
+  to { stroke-dashoffset: -12; }
+}
+
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-ink-dim);
+}
+.react-flow__controls-button:hover { background: var(--color-surface-2); }
+.react-flow__controls-button svg { fill: currentColor; }
+
+.react-flow__attribution { display: none; }
+
+/* --- Pulsing running node --- */
+@keyframes nodepulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 109, 90, 0.55); }
+  50% { box-shadow: 0 0 0 5px rgba(255, 109, 90, 0.08); }
+}
+.node-running {
+  border-color: var(--color-accent) !important;
+  animation: nodepulse 1.4s ease-in-out infinite;
+}
+
+/* --- Slide-over + modal animations --- */
+@keyframes slidein {
+  from { transform: translateX(-16px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.slide-in { animation: slidein 160ms ease; }
+
+@keyframes fadein {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.fade-in { animation: fadein 140ms ease; }
