@@ -8,6 +8,21 @@ export interface WorkflowNode {
   parameters: Record<string, unknown>
   credentials?: Record<string, string> // credential slot -> credential id
   disabled?: boolean
+  settings?: NodeSettings
+  /** Pinned output: in manual/test runs the node returns this instead of executing. */
+  pinData?: Item[]
+}
+
+export interface NodeSettings {
+  retryOnFail?: boolean
+  maxTries?: number // total attempts, including the first (default 3)
+  waitBetweenTries?: number // ms (default 1000)
+  /**
+   * stop          – mark the node failed; downstream nodes are skipped (default)
+   * continue      – pass the input items on with an `error` field added
+   * errorOutput   – send failed items to an extra "error" output
+   */
+  onError?: 'stop' | 'continue' | 'errorOutput'
 }
 
 export interface Connection {
@@ -59,7 +74,7 @@ export interface Item {
   binary?: Record<string, unknown>
 }
 
-export type NodeStatus = 'success' | 'error' | 'skipped'
+export type NodeStatus = 'success' | 'error' | 'skipped' | 'waiting'
 
 export interface NodeRun {
   nodeId: string
@@ -76,11 +91,13 @@ export interface NodeRun {
 
 export type ExecutionMode = 'manual' | 'test' | 'production' | 'retry'
 
+export type ExecutionStatus = 'running' | 'success' | 'error' | 'waiting'
+
 export interface ExecutionRecord {
   id: string
   workflowId: string
   workflowName?: string
-  status: 'running' | 'success' | 'error'
+  status: ExecutionStatus
   mode: ExecutionMode
   trigger?: { nodeId?: string; type?: string; payload?: unknown }
   nodeRuns: NodeRun[]
@@ -88,6 +105,20 @@ export interface ExecutionRecord {
   startedAt: string
   finishedAt?: string
   durationMs?: number
+  /** Set while status = 'waiting': when the run resumes on its own (absent = only via resume webhook). */
+  waitTill?: string
+  /** Serialized engine state for resuming a waiting execution. */
+  resumeState?: unknown
+}
+
+export interface WorkflowVersion {
+  id: string
+  workflowId: string
+  name: string
+  nodes: WorkflowNode[]
+  connections: Connection[]
+  settings: WorkflowSettings
+  createdAt: string
 }
 
 export interface TriggerInfo {
@@ -121,4 +152,10 @@ export interface Store {
   listExecutions(workflowId?: string, limit?: number): Promise<ExecutionRecord[]>
   getExecution(id: string): Promise<ExecutionRecord | null>
   deleteExecution(id: string): Promise<boolean>
+  /** Executions in 'waiting' status (any wait time). */
+  listWaitingExecutions(): Promise<ExecutionRecord[]>
+
+  addWorkflowVersion(v: Omit<WorkflowVersion, 'id' | 'createdAt'>): Promise<WorkflowVersion>
+  listWorkflowVersions(workflowId: string, limit?: number): Promise<WorkflowVersion[]>
+  getWorkflowVersion(id: string): Promise<WorkflowVersion | null>
 }

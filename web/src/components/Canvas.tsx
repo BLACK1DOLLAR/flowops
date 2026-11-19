@@ -62,6 +62,8 @@ function CanvasInner() {
           nodeName: n.name,
           parameters: n.parameters,
           disabled: n.disabled,
+          settings: n.settings,
+          pinned: Boolean(n.pinData?.length),
         } satisfies FlowNodeData,
       })),
     [workflow.nodes, selectedNodeId],
@@ -167,6 +169,8 @@ function BottomBar({ onZoomIn, onZoomOut, onFit }: { onZoomIn: () => void; onZoo
   const setLogsOpen = useStore((s) => s.setLogsOpen)
   const nodeCount = useStore((s) => s.workflow.nodes.length)
   const runError = useStore((s) => s.runError)
+  const waitingExecutionId = useStore((s) => s.waitingExecutionId)
+  const resumeWaiting = useStore((s) => s.resumeWaiting)
 
   return (
     <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-line bg-surface/95 px-2 py-1.5 shadow-xl backdrop-blur">
@@ -190,7 +194,12 @@ function BottomBar({ onZoomIn, onZoomOut, onFit }: { onZoomIn: () => void; onZoo
       >
         ☰
       </button>
-      {runError && <span className="ml-1 max-w-[220px] truncate text-[11px] text-err">{runError}</span>}
+      {waitingExecutionId && (
+        <button onClick={resumeWaiting} className="ml-1 rounded-lg border border-accent/50 px-2 py-1 text-[11px] font-semibold text-accent hover:bg-accent/10" title="Skip the wait and continue the run now">
+          Resume now
+        </button>
+      )}
+      {runError && <span className={`ml-1 max-w-[260px] truncate text-[11px] ${waitingExecutionId ? 'text-ink-dim' : 'text-err'}`} title={runError}>{runError}</span>}
     </div>
   )
 }

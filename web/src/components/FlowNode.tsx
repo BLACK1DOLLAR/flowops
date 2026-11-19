@@ -1,7 +1,8 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
-import { AlertTriangle, Check, SkipForward } from 'lucide-react'
-import { NODE_TYPES, paramSummary } from '../registry'
+import { AlertTriangle, Check, Hourglass, Pin, SkipForward } from 'lucide-react'
+import { NODE_TYPES, outputCount, outputLabels, paramSummary } from '../registry'
+import type { NodeSettings } from '../types'
 import { useStore } from '../store'
 
 export interface FlowNodeData extends Record<string, unknown> {
@@ -10,6 +11,8 @@ export interface FlowNodeData extends Record<string, unknown> {
   nodeName: string
   parameters: Record<string, unknown>
   disabled?: boolean
+  settings?: NodeSettings
+  pinned?: boolean
 }
 
 export type FlowNode = Node<FlowNodeData>
@@ -20,9 +23,8 @@ function FlowNodeInner({ id, data, selected }: NodeProps<FlowNode>) {
   const run = useStore((s) => s.nodeRuns[id])
   const openInspector = useStore((s) => s.openInspector)
   const isTrigger = def?.group === 'Triggers'
-  const outputs = def ? (def.outputs === 'dynamic-if' ? 2 : def.outputs === 'dynamic-switch'
-    ? Math.max(1, ((data.parameters.rules as unknown[] | undefined) ?? []).length + 1)
-    : def.outputs) : 1
+  const outputs = def ? outputCount(def, data) : 1
+  const labels = def ? outputLabels(def, data) : []
   const inputs = def?.inputs ?? 1
 
   const statusBadge = () => {
@@ -34,6 +36,8 @@ function FlowNodeInner({ id, data, selected }: NodeProps<FlowNode>) {
           <Check size={10} strokeWidth={3} /> {run.durationMs} ms
         </span>
       )
+    if (run.status === 'waiting')
+      return <span className="badge bg-accent/15 text-accent inline-flex items-center gap-1"><Hourglass size={10} /> Waiting</span>
     if (run.status === 'skipped')
       return <span className="badge bg-surface-3 text-ink-faint inline-flex items-center gap-1"><SkipForward size={10} /> Skipped</span>
     return <span className="badge bg-err/15 text-err inline-flex items-center gap-1"><AlertTriangle size={10} /> Error</span>
@@ -60,9 +64,9 @@ function FlowNodeInner({ id, data, selected }: NodeProps<FlowNode>) {
           type="source"
           id={`out-${i}`}
           position={Position.Right}
-          className={def?.outputLabels?.[i] ? `handle-out-${def.outputLabels[i]}` : undefined}
-          style={outputs > 1 ? { top: 'auto', bottom: 16 - i * 24 } : undefined}
-          aria-label={`${data.nodeName} output ${def?.outputLabels?.[i] ?? i + 1}`}
+          className={labels[i] ? `handle-out-${labels[i]}` : undefined}
+          style={outputs > 1 ? { top: 'auto', bottom: 16 + (outputs - 1 - i) * 24 } : undefined}
+          aria-label={`${data.nodeName} output ${labels[i] || i + 1}`}
           tabIndex={0}
         />
       ))}
@@ -77,6 +81,7 @@ function FlowNodeInner({ id, data, selected }: NodeProps<FlowNode>) {
           <div className="truncate text-[12.5px] font-semibold leading-tight">{data.nodeName}</div>
           <div className="truncate text-[10.5px] text-ink-faint leading-tight">{def?.name ?? data.nodeType}</div>
         </div>
+        {data.pinned && <span title="Output is pinned — manual runs use the pinned data" className="text-accent"><Pin size={11} /></span>}
         {data.disabled && <span className="text-[9px] font-semibold text-ink-faint border border-line rounded px-1">OFF</span>}
       </div>
 
@@ -86,10 +91,10 @@ function FlowNodeInner({ id, data, selected }: NodeProps<FlowNode>) {
         </div>
       )}
 
-      {outputs > 1 && def?.outputLabels && (
+      {outputs > 1 && labels.some(Boolean) && (
         <div className="flex justify-end gap-1 px-3 pb-1.5">
-          {def.outputLabels.map((l) => (
-            <span key={l} className="rounded bg-surface-3 px-1.5 py-0.5 text-[9px] font-semibold text-ink-faint">{l}</span>
+          {labels.map((l, i) => (
+            <span key={i} className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${l === 'error' ? 'bg-err/15 text-err' : 'bg-surface-3 text-ink-faint'}`}>{l || i + 1}</span>
           ))}
         </div>
       )}

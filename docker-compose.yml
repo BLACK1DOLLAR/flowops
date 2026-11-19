@@ -1,0 +1,44 @@
+# One-command setup: FlowOps + PostgreSQL + Redis.
+#   API_TOKEN=... ENCRYPTION_KEY=... docker compose up -d
+# then open http://localhost:5175 and enter the API token when asked.
+services:
+  flowops:
+    build: .
+    ports:
+      - "127.0.0.1:5175:5175"
+    environment:
+      API_TOKEN: ${API_TOKEN:?Set API_TOKEN (any long random string)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY (any long random string; keep it safe)}
+      DATABASE_URL: postgres://flowops:flowops@postgres:5432/flowops
+      REDIS_URL: redis://redis:6379
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5175}
+    volumes:
+      - flowops-data:/app/server/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: flowops
+      POSTGRES_PASSWORD: flowops
+      POSTGRES_DB: flowops
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowops"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+volumes:
+  flowops-data:
+  postgres-data:

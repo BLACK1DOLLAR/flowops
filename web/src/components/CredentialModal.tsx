@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { NODE_TYPES, CREDENTIAL_FIELD_DEFS, CREDENTIAL_TYPE_LABELS } from '../registry'
+import { NODE_TYPES, CREDENTIAL_FIELD_DEFS, CREDENTIAL_TYPE_LABELS, credentialAccepts, credentialTypesFor } from '../registry'
 import { useStore } from '../store'
 import { api } from '../api'
 
@@ -9,7 +9,10 @@ export function CredentialModal() {
   const refresh = useStore((s) => s.refreshCredentials)
   const updateCredentialRef = useStore((s) => s.updateCredentialRef)
   const node = useStore((s) => s.workflow.nodes.find((n) => n.id === s.selectedNodeId))
-  const [type, setType] = useState('openaiApi')
+  const slotType = useStore((s) => s.credentialSlotType)
+  // Offer only the types the node slot accepts (all types when opened from elsewhere).
+  const types = slotType ? credentialTypesFor(slotType).filter((t) => t in CREDENTIAL_FIELD_DEFS) : Object.keys(CREDENTIAL_FIELD_DEFS)
+  const [type, setType] = useState(types[0] ?? 'openaiApi')
   const [name, setName] = useState('')
   const [fields, setFields] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -27,7 +30,7 @@ export function CredentialModal() {
       // Auto-attach to the node slot that expects this credential type.
       if (node) {
         const def = NODE_TYPES[node.type]
-        const slot = def?.credentials?.find((s) => s.type === type || s.type === 'any-llm')
+        const slot = def?.credentials?.find((s) => (slotType ? s.type === slotType : true) && credentialAccepts(s.type, type))
         if (slot) updateCredentialRef(node.id, slot.key, cred.id)
       }
       close()
@@ -52,8 +55,8 @@ export function CredentialModal() {
           value={type}
           onChange={(e) => { setType(e.target.value); setFields({}) }}
         >
-          {Object.entries(CREDENTIAL_FIELD_DEFS).map(([t]) => (
-            <option key={t} value={t}>{CREDENTIAL_TYPE_LABELS[t]}</option>
+          {types.map((t) => (
+            <option key={t} value={t}>{CREDENTIAL_TYPE_LABELS[t] ?? t}</option>
           ))}
         </select>
 
@@ -62,7 +65,7 @@ export function CredentialModal() {
           className="mb-3 w-full rounded-md border border-line bg-canvas px-2.5 py-1.5 text-[12.5px] outline-none focus:border-accent"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="My OpenAI key"
+          placeholder="e.g. Production API key"
         />
 
         {fieldDefs.map((f) => (

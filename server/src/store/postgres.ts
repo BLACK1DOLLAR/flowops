@@ -6,7 +6,7 @@ import { config } from '../config.js'
 import { encryptJson, decryptJson } from '../crypto.js'
 import { MemoryStore, trimItems } from './memory.js'
 import type { Store } from './types.js'
-import type { CredentialSummary, ExecutionRecord, WorkflowRecord } from './types.js'
+import type { CredentialSummary, ExecutionRecord, WorkflowRecord, WorkflowVersion } from './types.js'
 
 const SCHEMA_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../db/schema.sql')
 
@@ -51,6 +51,8 @@ type ExecRow = {
   started_at: Date
   finished_at: Date | null
   duration_ms: number | null
+  wait_till: Date | null
+  resume_state: unknown
 }
 
 function rowToExecution(r: ExecRow, workflowName?: string): ExecutionRecord {
@@ -66,8 +68,30 @@ function rowToExecution(r: ExecRow, workflowName?: string): ExecutionRecord {
     startedAt: r.started_at.toISOString(),
     finishedAt: r.finished_at?.toISOString(),
     durationMs: r.duration_ms ?? undefined,
+    waitTill: r.wait_till?.toISOString(),
+    resumeState: r.resume_state ?? undefined,
   }
 }
+
+type VersionRow = {
+  id: string
+  workflow_id: string
+  name: string
+  nodes: WorkflowVersion['nodes']
+  connections: WorkflowVersion['connections']
+  settings: WorkflowVersion['settings']
+  created_at: Date
+}
+
+const rowToVersion = (r: VersionRow): WorkflowVersion => ({
+  id: r.id,
+  workflowId: r.workflow_id,
+  name: r.name,
+  nodes: r.nodes,
+  connections: r.connections,
+  settings: r.settings,
+  createdAt: r.created_at.toISOString(),
+})
 
 export class PostgresStore implements Store {
   private pool: pg.Pool
@@ -173,8 +197,8 @@ export class PostgresStore implements Store {
 
   async createExecution(e: Omit<ExecutionRecord, 'id'>): Promise<ExecutionRecord> {
     const { rows } = await this.pool.query<ExecRow>(
-      `INSERT INTO executions (workflow_id, status, mode, trigger, node_runs, error, started_at, finished_at, duration_ms)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      `INSERT INTO executions (workflow_id, status, mode, trigger, node_runs, error, started_at, finished_at, duration_ms, wait_till, resume_state)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [
         e.workflowId,
         e.status,
@@ -185,6 +209,8 @@ export class PostgresStore implements Store {
         e.startedAt,
         e.finishedAt ?? null,
         e.durationMs ?? null,
+        e.waitTill ?? null,
+        e.resumeState === undefined ? null : JSON.stringify(e.resumeState),
       ],
     )
     return rowToExecution(rows[0])
@@ -196,7 +222,9 @@ export class PostgresStore implements Store {
          node_runs = COALESCE($3, node_runs),
          error = COALESCE($4, error),
          finished_at = COALESCE($5, finished_at),
-         duration_ms = COALESCE($6, duration_ms)
+         duration_ms = COALESCE($6, duration_ms),
+         wait_till = CASE WHEN $7::boolean THEN $8::timestamptz ELSE wait_till END,
+         resume_state = CASE WHEN $9::boolean THEN $10::jsonb ELSE resume_state END
        WHERE id = $1 RETURNING *`,
       [
         id,
@@ -205,6 +233,10 @@ export class PostgresStore implements Store {
         patch.error ?? null,
         patch.finishedAt ?? null,
         patch.durationMs ?? null,
+        'waitTill' in patch,
+        patch.waitTill ?? null,
+        'resumeState' in patch,
+        patch.resumeState == null ? null : JSON.stringify(patch.resumeState),
       ],
     )
     return rows[0] ? rowToExecution(rows[0]) : null
@@ -227,6 +259,37 @@ export class PostgresStore implements Store {
   async deleteExecution(id: string): Promise<boolean> {
     const res = await this.pool.query('DELETE FROM executions WHERE id = $1', [id])
     return (res.rowCount ?? 0) > 0
+  }
+  async listWaitingExecutions(): Promise<ExecutionRecord[]> {
+    const { rows } = await this.pool.query<ExecRow>(`SELECT * FROM executions WHERE status = 'waiting'`)
+    return rows.map((r) => rowToExecution(r))
+  }
+
+  // -- versions ---------------------------------------------------------------
+
+  async addWorkflowVersion(v: Omit<WorkflowVersion, 'id' | 'createdAt'>): Promise<WorkflowVersion> {
+    const { rows } = await this.pool.query<VersionRow>(
+      `INSERT INTO workflow_versions (workflow_id, name, nodes, connections, settings)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [v.workflowId, v.name, JSON.stringify(v.nodes), JSON.stringify(v.connections), JSON.stringify(v.settings ?? {})],
+    )
+    await this.pool.query(
+      `DELETE FROM workflow_versions WHERE workflow_id = $1 AND id NOT IN (
+         SELECT id FROM workflow_versions WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT 50)`,
+      [v.workflowId],
+    )
+    return rowToVersion(rows[0])
+  }
+  async listWorkflowVersions(workflowId: string, limit = 50): Promise<WorkflowVersion[]> {
+    const { rows } = await this.pool.query<VersionRow>(
+      'SELECT * FROM workflow_versions WHERE workflow_id = $1 ORDER BY created_at DESC LIMIT $2',
+      [workflowId, limit],
+    )
+    return rows.map(rowToVersion)
+  }
+  async getWorkflowVersion(id: string): Promise<WorkflowVersion | null> {
+    const { rows } = await this.pool.query<VersionRow>('SELECT * FROM workflow_versions WHERE id = $1', [id])
+    return rows[0] ? rowToVersion(rows[0]) : null
   }
 }
 

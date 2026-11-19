@@ -9,3 +9,5 @@ docs/.frame-check.jpg
 .env.*
 *.log
 .DS_Store
+!.env.example
+*.tsbuildinfo

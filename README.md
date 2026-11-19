@@ -1,180 +1,155 @@
-# FlowOps — an n8n-style workflow automation platform
+# FlowOps
 
-A production-grade clone of [n8n](https://n8n.io): a node-based workflow editor with a
-DAG execution engine, live webhooks, cron scheduling, AI/LLM nodes, encrypted credential
-storage, and full execution history with replay.
+A self-hosted, n8n-style workflow automation tool: a node-based editor, an execution
+engine with loops, retries and resumable waits, live webhooks and schedules, AI nodes
+(Claude, OpenAI-compatible, Gemini), encrypted credentials, and full execution history.
+
+![FlowOps running the morning email brief workflow](docs/flowops-morning-email-demo.gif)
+
+The recording shows the editor running the **Morning Email Brief** example end to end (MP4
+versions are in [`docs/`](docs/)). The email it drafts is rendered in
+[`docs/morning-brief-email.html`](docs/morning-brief-email.html).
 
 ```
 ┌─────────────────────────────┐        ┌──────────────────────────────────┐
-│  web/  React + React Flow   │  HTTP  │  server/  Express + DAG engine   │
-│  canvas · inspector · logs  │ ─────► │  Postgres-ready · Redis-ready    │
-└─────────────────────────────┘        └──────────────────────────────────┘
+│  web/  React + React Flow   │  HTTP  │  server/  Express + engine        │
+│  canvas · inspector · logs  │ ─────► │  memory or Postgres · inline or   │
+└─────────────────────────────┘        │  Redis queue                      │
+                                       └──────────────────────────────────┘
 ```
 
-## Demo recording
-
-![FlowOps editor recording](docs/morning-brief-demo.mp4)
-
-`docs/morning-brief-demo.mp4` — the editor running the **Morning Email Brief** workflow
-end to end: searching the node palette, executing the graph, inspecting the drafted email
-and the send result, then activating the schedule. Recorded headlessly from the real UI
-(`1280×800 @1.5×`), no mockups. The drafted email itself is rendered in
-`docs/morning-brief-email.html`.
-
-## Quick start (zero external dependencies)
+## Quick start
 
 ```bash
 npm install
-npm run dev:server     # API on http://localhost:5175
-npm run dev:web        # Editor on http://localhost:5173 (proxies /api + /webhook)
+npm run dev:server     # API on http://127.0.0.1:5175
+npm run dev:web        # editor on http://localhost:5173 (proxies the API and webhooks)
 ```
 
-With no environment variables set, the server runs on an **in-memory store persisted to
-`server/data/memory-store.json`** and an **in-process job queue with retry + exponential
-backoff** — everything works out of the box.
+With no configuration the server keeps its data in `server/data/memory-store.json`, runs
+jobs in-process, and only listens on `127.0.0.1`.
 
-## Production configuration
-
-| Env var          | Effect                                                                    |
-| ---------------- | ------------------------------------------------------------------------- |
-| `DATABASE_URL`   | PostgreSQL connection string. Schema (`server/db/schema.sql`) is applied automatically on boot. |
-| `REDIS_URL`      | Enables **Redis + BullMQ** for webhook executions (3 attempts, exponential backoff). |
-| `ENCRYPTION_KEY` | Key material for AES-256-GCM credential encryption (defaults to a derived dev key with a warning). |
-| `PORT`           | API port (default `5175`).                                                |
-| `DATA_FILE`      | Memory-store persistence path (default `data/memory-store.json`).         |
+### Run everything with Docker
 
 ```bash
-npm run build          # tsc (server) + vite build (web)
-npm start              # node server/dist/index.js
+API_TOKEN=$(openssl rand -hex 24) ENCRYPTION_KEY=$(openssl rand -hex 32) docker compose up -d
 ```
 
-## What's implemented
+This starts FlowOps with PostgreSQL and Redis at http://localhost:5175. The editor asks
+for the API token once and remembers it in your browser. Keep `ENCRYPTION_KEY` safe:
+stored credentials can't be decrypted without it.
 
-### Execution engine (`server/src/engine/`)
-- **DAG traversal** — parses nodes + connections, standardizes data as
-  `[{ json, binary }]` items, delivers each edge exactly once, and closes the graph by
-  propagating empty payloads to dead branches (downstream nodes are marked `skipped`).
-- **Branch routing** — IF/Switch deliver only to the outputs that matched.
-- **Expression sandbox** (`expression.ts`) — hand-written Pratt parser for
-  `{{ $json.body.email }}`-style expressions: member/index access, ternary, comparisons,
-  whitelisted globals; `__proto__`/`constructor`/`prototype` access is blocked.
-  Method calls keep their receiver (`{{ $json.name.toUpperCase() }}`). `$now` is the ISO
-  timestamp with date helpers: `{{ $now.format('dddd, MMMM D') }}`,
-  `{{ $now.plus(1, 'day').format('YYYY-MM-DD') }}`, `$now.weekday` (tokens: YYYY YY MMMM MMM
-  MM M dddd ddd DD D HH H hh h mm ss A a, `[literal text]`).
-- **Unconnected nodes** — runs start from trigger nodes; any node not wired to a trigger is
-  reported as `skipped` with a "Not connected" message instead of running on its own.
-- **Code node** — custom JavaScript in `node:vm` (5 s timeout, `codeGeneration` disabled,
-  structured-cloned inputs). *Tradeoff: `node:vm` is an isolation boundary, not a security
-  hardening — swap in `isolated-vm` for hostile multi-tenant workloads.*
+### Production build without Docker
+
+```bash
+npm run build          # server (tsc) + editor (vite)
+npm start              # serves the API and the built editor from one process
+```
+
+## Configuration
+
+| Env var          | Effect |
+| ---------------- | ------ |
+| `API_TOKEN`      | Every `/api` request must send `Authorization: Bearer <token>`. **Required** when `HOST` is not loopback. |
+| `HOST`           | Interface to listen on (default `127.0.0.1`). The server refuses to start on any other address without `API_TOKEN`. |
+| `ENCRYPTION_KEY` | Key for AES-256-GCM credential encryption. **Required** when `NODE_ENV=production`. |
+| `PORT`           | Port (default `5175`). |
+| `PUBLIC_URL`     | Base URL used in Wait-node resume links (default `http://localhost:PORT`). |
+| `CORS_ORIGIN`    | Comma-separated origins allowed to call the API from a browser. Empty = none (the editor uses a same-origin proxy). |
+| `DATABASE_URL`   | PostgreSQL connection string; the schema in `server/db/schema.sql` is applied on boot. |
+| `REDIS_URL`      | Use Redis + BullMQ for queued webhook runs (3 attempts, exponential backoff). |
+| `DATA_FILE`      | Path of the JSON file used when there is no database. |
+
+See [`.env.example`](.env.example).
+
+> **Security note.** The Code node runs JavaScript in `node:vm`, which is an isolation
+> boundary, not a security sandbox. Anyone who can call the API can run code on the
+> server, which is why the API binds to localhost and requires a token otherwise. Don't
+> expose FlowOps to people you don't trust.
+
+## Features
+
+### Engine (`server/src/engine/`)
+- **Graph execution:** items (`[{ json, binary }]`) flow along connections. IF and Switch
+  send items only to the matching output, and dead branches are marked *skipped*.
+- **Loops:** *Loop Over Items* runs the nodes on its `loop` output once per batch (wire
+  the last one back into the loop node), then emits every result on `done`.
+- **Retries and error routing per node:** retry N times with a delay. On failure, stop the
+  branch, continue with an `error` field, or send failed items to an extra `error` output.
+- **Resumable waits:** a Wait of a few seconds runs inline. Longer waits, a specific
+  date/time, or "until the resume URL is called" save the run and resume later, even
+  after a restart. The resume URL is available as `{{ $execution.resumeUrl }}`.
+- **Pinned data:** pin a node's output in the inspector and manual runs reuse it instead
+  of calling the API again. Production runs ignore pins.
+- **Expressions:** `{{ $json.body.email }}`, `{{ $('Webhook').item.json.body.id }}`
+  (any earlier node by name), `$input.all()`, ternaries, comparisons, method calls,
+  `$now.format('dddd, MMMM D')` and `$now.plus(1, 'day')`. Prototype access is blocked
+  and only whitelisted globals are reachable.
+- **Error workflows:** a failed run sends `{ error, workflowId, executionId }` to the
+  workflow named in `settings.errorWorkflow`.
 
 ### Nodes
-| Category | Nodes |
+| Group | Nodes |
 | --- | --- |
-| **Triggers** | Webhook (HMAC-SHA256 validation), Schedule (cron), Manual |
-| **Core Logic** | IF, Switch (rule-based, dynamic outputs), Merge (append/combine), Loop Over Items (batching), Wait, Code (JavaScript) |
-| **AI & Agents** | AI Agent, LLM Chain, OpenAI (OpenAI-compatible + Gemini APIs, plus a keyless `local` template provider) — Vector Store / Memory / Tool Calling are beta stubs |
-| **App Integrations** | HTTP Request (header-auth credential), PostgreSQL, Slack (incoming webhook), Send Email (SMTP via nodemailer, writes RFC 822 `.eml` files to the outbox when no credential is attached) — Redis / Gmail beta stubs |
+| **Triggers** | Webhook (respond immediately, with the last node, or via *Respond to Webhook*; optional HMAC signing credential), Schedule (cron + timezone), Manual |
+| **Core logic** | IF, Switch, Merge, Loop Over Items, Wait, Code (JavaScript), No Operation |
+| **Data** | Edit Fields (Set), Filter, Sort, Limit, Remove Duplicates, Split Out, Aggregate, Respond to Webhook |
+| **AI** | AI Agent and LLM Chain with **Claude** (Anthropic SDK, default `claude-opus-5-5`), OpenAI-compatible, Gemini, or an offline `local` template provider |
+| **Apps** | HTTP Request (per item, query/JSON/form bodies, header/bearer/basic auth, pagination), PostgreSQL, Redis (get/set/delete/incr), Slack, Send Email (SMTP, or `.eml` files in an outbox when no credential is attached), OpenAI |
+| **Coming soon** | Vector Store, Memory, Tool Calling, Gmail (shown in the palette, not runnable yet) |
 
-### Backend
-- **REST API** (`server/src/api.ts`) — workflow CRUD, activate/deactivate, run, single-node
-  test, executions list/detail/replay, credential CRUD.
-- **Webhook routes** — `POST|GET|PUT /webhook/:workflowId/:path` (queued via BullMQ/inline)
-  and `/webhook-test/...` (synchronous, returns last node output). When a webhook node has
-  an `hmacSecret`, requests must send `X-Signature` = hex HMAC-SHA256 of the raw body
-  (constant-time comparison).
-- **Trigger manager** (`triggers.ts`) — registers/unregisters webhook routes and
-  `node-cron` schedules on activate/deactivate/save, and re-registers all active workflows
-  on boot.
-- **Error workflows** — a failing workflow forwards `{ error, workflowId, executionId }`
-  to the workflow named in `settings.errorWorkflow`.
-- **Credentials** — AES-256-GCM at rest (`v1.iv.tag.ciphertext`); secrets never leave the
-  server after creation.
+### Editor (`web/`)
+- Drag-and-drop canvas with run status, item counts on wires, and tidy-up layout.
+- Three-pane inspector: input data, parameters (fields appear only when relevant), and
+  output per branch. *Test Step* runs a single node with real upstream data.
+- Expression suggestions from the actual input fields and upstream node names. Type `{{`
+  or click `{ }`.
+- **Undo/redo** (`Ctrl+Z` / `Ctrl+Shift+Z`), **copy/paste/duplicate** nodes
+  (`Ctrl+C` / `Ctrl+V` / `Ctrl+D`), save (`Ctrl+S`).
+- **Version history:** every save is kept (newest 50) and any version can be restored.
+- **Import/export** workflows as JSON. Exports contain credential *references*, never
+  secrets.
+- Execution log with replay, plus *Resume now* for waiting runs.
 
-### Frontend (`web/`)
-- **Canvas** — React Flow: drag-and-drop from the node drawer, bezier edges, multi-handle
-  IF (green/red true/false) and Switch nodes, node states (idle → running pulse → success
-  with `ms` badge / error inline), `N item(s)` badges on wires, animated edges while
-  running, tidy-up auto-layout, zoom controls.
-- **Node drawer** — searchable slide-over grouped into Triggers / Core Logic / AI & Agents /
-  App Integrations.
-- **3-pane node inspector** — Input data (Tree/Table/Raw JSON views) · dynamic parameter
-  forms with `{{ }}` expression highlighting + variable hints + credential selector ·
-  Output data with per-node "Test Step".
-- **Top bar** — editable title, Active/Inactive toggle (registers live triggers), tags,
-  save. **Bottom bar** — Test Workflow, zoom, tidy-up, execution-logs drawer with
-  one-click replay.
-- Design tokens: `#18191C` canvas, `#232429` surfaces, `#FF6D5A` coral accent, crisp
-  technical typography (see `web/src/index.css`).
+### API
+- `/api/workflows` CRUD, activate/deactivate, `/run`, `/versions`, `/versions/:id/restore`
+- `/api/nodes/test`, `/api/executions` (list, detail, replay, resume, delete), `/api/credentials`
+- Webhooks (not behind the API token):
+  - `/webhook/:workflowId/:path`: production
+  - `/webhook-test/:workflowId/:path`: synchronous, returns the last node's output
+  - `/webhook-waiting/:executionId`: resumes a waiting run
 
-## Verified end-to-end
+## Example: a morning email brief
 
-- Manual run of a 5-node graph (Manual → Code → IF → HTTP/Wait): correct branching,
-  item counts per edge, skipped dead branch.
-- Production webhook: activate → `POST /webhook/:id/orders` → queued execution recorded
-  (mode `production`); test-mode returns final node output synchronously.
-- HMAC: `401 Invalid webhook signature` without/with wrong `X-Signature`; `200` with the
-  valid HMAC-SHA256 of the raw body.
-- UI: nodes placed & wired in the editor, Test Workflow run (HTTP node fetched
-  `https://api.github.com/zen` in 701 ms), Test Step, credential creation (encrypted at
-  rest), replay — zero console errors.
-- `npm run build` clean for both workspaces.
-- Morning brief automation: manual run produced a 5-node success trace (0–19 ms per node),
-  an `.eml` in `server/data/outbox/` with RFC 2047-encoded headers, and a cron trigger
-  registered as `0 8 * * *`.
-- Execution history: `DELETE /api/executions/:id` removes a run from both stores.
-
-## Try it
-
-1. Open the editor, click **+ Node**, place a **Webhook**, then a **Code** node, wire them.
-2. In the Code node use:
-   ```js
-   const payload = $input.first().json;
-   return [{ json: { received: payload.body } }];
-   ```
-3. Toggle **Active** (top bar) — the webhook route registers live.
-4. `curl -X POST http://localhost:5175/webhook/<workflowId>/<path> -d '{"hello":"world"}'`
-5. Open the **logs drawer** (bottom bar) to inspect the run and replay it.
-
-## Example automation: a morning email brief
-
-`tests/morning-brief-workflow.json` is the workflow from the demo — import it with
-`POST /api/workflows` (or recreate it in the UI):
+[`tests/morning-brief-workflow.json`](tests/morning-brief-workflow.json) is the workflow
+from the recording. Import it with the editor's **Import** button:
 
 ```
 Schedule (0 8 * * *) → Build Brief Data (Code) → Draft Email (AI Agent) → Compose Message (Code) → Send Email
 ```
 
-- **Build Brief Data** collects the day's stats into one item (`to`, `dateLabel`,
-  `highlights`, `focus`, `metrics`). Replace the static arrays with real sources — a
-  Postgres query, an HTTP Request, a calendar API.
-- **Draft Email** turns that item into prose. With an LLM credential attached it calls
-  OpenAI/Gemini; with `provider = local` it renders a deterministic template draft so the
-  workflow runs with no API key.
-- **Compose Message** converts the draft into a subject + styled HTML body.
-- **Send Email** delivers over SMTP using a `smtp` credential (host/port/user/password).
-  Without a credential it writes a real `.eml` file to `server/data/outbox/` and reports
-  `{ sent: false, transport: "outbox" }` — safe to run, easy to inspect in any mail client.
+With `provider = local` and no SMTP credential it runs with no accounts at all. The draft
+is a template, and the email lands as an `.eml` file in `server/data/outbox/`. Attach an
+Anthropic, OpenAI or Gemini credential for a real draft, and an SMTP credential to send it.
 
-Activate the workflow and the `0 8 * * *` cron is registered with `node-cron`; the trigger
-manager re-registers it on server boot. To send for real, create an **SMTP** credential
-(app password for Gmail, API key for Postmark/Resend SMTP) and attach it to the node —
-everything else stays the same.
+## Development
 
-## Architecture notes & roadmap
+```bash
+npm test               # engine, node, expression and trigger tests (Vitest)
+npm run typecheck      # server + editor
+npm run build
+```
 
-- Storage and queue are interface-based (`Store`, `JobQueue`) — Postgres/BullMQ drop in
-  via env vars, memory/inline fallbacks keep local dev zero-config.
-- `api.ts` `summarizeExecution` strips `nodeRuns` from list responses; full snapshots are
-  on `GET /executions/:id`.
-- Roadmap: workflow version history (top-bar button is a placeholder), OAuth2 Gmail node,
-  real Vector Store/Memory/Tool nodes, isolated-vm code sandbox, per-node retry settings,
-  fan-out parallel execution.
+CI runs the tests and the build on every push and pull request
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ## Known limitations
 
-- Beta nodes (Vector Store, Memory, Tool, Redis, Gmail) exist in the UI registry but throw
-  "not implemented" server-side.
-- The Code sandbox allows no async operations (by design, sync `vm` run); Wait maxes at 60 s.
-- Webhook HMAC secrets live in the workflow graph (node parameters), not the encrypted
-  credentials table.
+- The Code node can't use `async` or `require` (synchronous `vm`, 5 s timeout).
+- Webhook secrets typed into a node's old *HMAC secret* field still work, but new
+  workflows should use a *Webhook Signing Secret* credential, which is stored encrypted.
+- Gmail, Vector Store, Memory and Tool Calling are not implemented yet.
+
+## License
+
+[MIT](LICENSE)

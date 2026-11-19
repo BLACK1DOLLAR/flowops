@@ -8,6 +8,7 @@ import type {
   ExecutionRecord,
   Store,
   WorkflowRecord,
+  WorkflowVersion,
 } from './types.js'
 
 // ---------------------------------------------------------------------------
@@ -18,7 +19,10 @@ interface MemoryShape {
   workflows: Record<string, WorkflowRecord>
   credentials: Record<string, { id: string; name: string; type: string; enc: string; createdAt: string }>
   executions: ExecutionRecord[]
+  versions?: WorkflowVersion[]
 }
+
+const MAX_VERSIONS_PER_WORKFLOW = 50
 
 function uid(): string {
   return globalThis.crypto.randomUUID()
@@ -74,6 +78,7 @@ export class MemoryStore implements Store {
     if (!this.data.workflows[id]) return false
     delete this.data.workflows[id]
     this.data.executions = this.data.executions.filter((e) => e.workflowId !== id)
+    this.data.versions = (this.data.versions ?? []).filter((v) => v.workflowId !== id)
     this.persist()
     return true
   }
@@ -112,7 +117,9 @@ export class MemoryStore implements Store {
   async createExecution(e: Omit<ExecutionRecord, 'id'>): Promise<ExecutionRecord> {
     const rec: ExecutionRecord = { ...e, id: uid() }
     this.data.executions.unshift(rec)
-    this.data.executions = this.data.executions.slice(0, 500)
+    // Keep the newest 500, but never drop a run that is still waiting to resume.
+    let kept = 0
+    this.data.executions = this.data.executions.filter((e) => e.status === 'waiting' || kept++ < 500)
     this.persist()
     return rec
   }
@@ -137,6 +144,24 @@ export class MemoryStore implements Store {
     if (this.data.executions.length === before) return false
     this.persist()
     return true
+  }
+  async listWaitingExecutions(): Promise<ExecutionRecord[]> {
+    return this.data.executions.filter((e) => e.status === 'waiting')
+  }
+
+  async addWorkflowVersion(v: Omit<WorkflowVersion, 'id' | 'createdAt'>): Promise<WorkflowVersion> {
+    const rec: WorkflowVersion = structuredClone({ ...v, id: uid(), createdAt: new Date().toISOString() })
+    const versions = [rec, ...(this.data.versions ?? [])]
+    let kept = 0
+    this.data.versions = versions.filter((x) => x.workflowId !== v.workflowId || kept++ < MAX_VERSIONS_PER_WORKFLOW)
+    this.persist()
+    return rec
+  }
+  async listWorkflowVersions(workflowId: string, limit = 50): Promise<WorkflowVersion[]> {
+    return (this.data.versions ?? []).filter((v) => v.workflowId === workflowId).slice(0, limit)
+  }
+  async getWorkflowVersion(id: string): Promise<WorkflowVersion | null> {
+    return (this.data.versions ?? []).find((v) => v.id === id) ?? null
   }
 }
 

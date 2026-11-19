@@ -49,19 +49,19 @@ export function NodeDrawer() {
                 return (
                   <div
                     key={def.type}
-                    draggable={!def.beta}
+                    draggable={!def.comingSoon}
                     onDragStart={(e) => {
                       e.dataTransfer.setData(DRAG_TYPE, def.type)
                       e.dataTransfer.effectAllowed = 'move'
                     }}
                     onDoubleClick={() => {
-                      if (!def.beta) {
+                      if (!def.comingSoon) {
                         useStore.getState().addNode(def.type) // placed + wired after the selected node
                       }
                     }}
-                    title={def.beta ? 'Beta — not implemented in this build yet' : 'Drag onto the canvas'}
+                    title={def.comingSoon ? 'Coming soon — not available in this build yet' : 'Drag onto the canvas'}
                     className={`group mb-1 flex cursor-grab items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 hover:border-line hover:bg-surface-2 ${
-                      def.beta ? 'opacity-50' : ''
+                      def.comingSoon ? 'opacity-50' : ''
                     }`}
                   >
                     <span className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-line bg-surface-2 text-ink-dim group-hover:text-accent">
@@ -70,7 +70,7 @@ export function NodeDrawer() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 text-[12px] font-medium">
                         {def.name}
-                        {def.beta && <span className="rounded bg-surface-3 px-1 text-[9px] font-bold text-ink-faint">BETA</span>}
+                        {def.comingSoon && <span className="rounded bg-surface-3 px-1 text-[9px] font-bold text-ink-faint">SOON</span>}
                       </div>
                       <div className="truncate text-[10.5px] text-ink-faint">{def.description}</div>
                     </div>

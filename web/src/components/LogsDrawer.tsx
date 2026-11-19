@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, RotateCcw } from 'lucide-react'
+import { ChevronDown, FastForward, RotateCcw } from 'lucide-react'
 import { api } from '../api'
 import { useStore } from '../store'
 
@@ -35,6 +35,18 @@ export function LogsDrawer() {
     await useStore.getState().loadExecutions()
   }
 
+  const resume = async (id: string) => {
+    await api.resume(id).catch(() => {})
+    setDetail((d) => {
+      const { [id]: _gone, ...rest } = d
+      return rest
+    })
+    await useStore.getState().loadExecutions()
+  }
+
+  const dot = (status: string) =>
+    status === 'success' ? 'bg-ok' : status === 'error' ? 'bg-err' : status === 'waiting' ? 'bg-accent' : 'bg-ink-faint animate-pulse'
+
   return (
     <section
       className={`absolute bottom-16 left-3 right-3 z-20 max-h-[300px] rounded-xl border border-line bg-surface shadow-2xl transition-all ${
@@ -54,13 +66,26 @@ export function LogsDrawer() {
         {executions.map((e) => (
           <div key={e.id} className="mb-1 rounded-lg border border-line bg-surface-2">
             <button className="flex w-full items-center gap-2 px-3 py-2 text-left" onClick={() => expand(e.id)}>
-              <span className={`h-2 w-2 flex-none rounded-full ${e.status === 'success' ? 'bg-ok' : e.status === 'error' ? 'bg-err' : 'bg-ink-faint animate-pulse'}`} />
+              <span className={`h-2 w-2 flex-none rounded-full ${dot(e.status)}`} title={e.status} />
               <span className="text-[12px] font-medium">{new Date(e.startedAt).toLocaleTimeString()}</span>
               <span className="text-[10.5px] text-ink-faint">{e.mode}</span>
-              <span className="text-[11px] text-ink-dim">{e.durationMs ?? 0} ms · {e.nodeCount} nodes</span>
+              <span className="text-[11px] text-ink-dim">
+                {e.status === 'waiting'
+                  ? e.waitTill ? `waiting until ${new Date(e.waitTill).toLocaleString()}` : 'waiting for resume webhook'
+                  : `${e.durationMs ?? 0} ms`} · {e.nodeCount} nodes
+              </span>
               {e.error && <span className="min-w-0 flex-1 truncate text-[10.5px] text-err">{e.error}</span>}
+              {e.status === 'waiting' && (
+                <span
+                  className="ml-auto rounded p-1 text-accent hover:bg-accent/10"
+                  onClick={(ev) => { ev.stopPropagation(); resume(e.id) }}
+                  title="Resume now"
+                >
+                  <FastForward size={12} />
+                </span>
+              )}
               <span
-                className="ml-auto rounded p-1 text-ink-faint hover:text-accent"
+                className={`${e.status === 'waiting' ? '' : 'ml-auto '}rounded p-1 text-ink-faint hover:text-accent`}
                 onClick={(ev) => { ev.stopPropagation(); replay(e.id) }}
                 title="Replay execution"
               >
@@ -71,7 +96,7 @@ export function LogsDrawer() {
               <div className="border-t border-line px-3 py-2">
                 {detail[e.id].runs.map((r, i) => (
                   <div key={i} className="flex items-center gap-2 py-0.5 text-[11px]">
-                    <span className={`h-1.5 w-1.5 rounded-full ${r.status === 'success' ? 'bg-ok' : r.status === 'error' ? 'bg-err' : 'bg-ink-faint'}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${dot(r.status)}`} />
                     <span className="font-medium">{r.nodeName}</span>
                     <span className="text-ink-faint">{r.durationMs} ms</span>
                     {r.error && <span className="truncate text-err">{r.error}</span>}

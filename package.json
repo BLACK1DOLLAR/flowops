@@ -1,5 +1,5 @@
 {
-  "name": "n8n-clone",
+  "name": "flowops",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -10,6 +10,10 @@
     "dev:server": "npm -w server run dev",
     "dev:web": "npm -w web run dev",
     "build": "npm -w server run build && npm -w web run build",
-    "start": "npm -w server run start"
-  }
+    "start": "npm -w server run start",
+    "test": "npm -w server run test",
+    "typecheck": "npm -w server run typecheck && npm -w web exec tsc -b"
+  },
+  "description": "A self-hosted, n8n-style workflow automation tool: node editor, execution engine, webhooks, schedules and AI nodes.",
+  "license": "MIT"
 }

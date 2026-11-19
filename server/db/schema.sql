@@ -46,3 +46,20 @@ CREATE TABLE IF NOT EXISTS webhooks (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (workflow_id, path)
 );
+
+-- Waiting executions (Wait node): when to resume, and the engine state to resume from.
+ALTER TABLE executions ADD COLUMN IF NOT EXISTS wait_till    TIMESTAMPTZ;
+ALTER TABLE executions ADD COLUMN IF NOT EXISTS resume_state JSONB;
+CREATE INDEX IF NOT EXISTS idx_executions_waiting ON executions (wait_till) WHERE status = 'waiting';
+
+-- Saved snapshots of a workflow, written on every save (newest 50 kept per workflow).
+CREATE TABLE IF NOT EXISTS workflow_versions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workflow_id   UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  nodes         JSONB NOT NULL,
+  connections   JSONB NOT NULL,
+  settings      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_versions ON workflow_versions (workflow_id, created_at DESC);
