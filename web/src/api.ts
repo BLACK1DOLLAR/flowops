@@ -21,7 +21,44 @@ function writeToken(token: string): void {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit, retried = false): Promise<T> {
+// Asking for the token ----------------------------------------------------
+// The UI registers an in-app dialog (TokenPrompt) to collect the token. This
+// replaces window.prompt(), which many browsers and embedded webviews block
+// ("prompt() is not supported"). Concurrent 401s share one pending dialog.
+
+type TokenAsker = (opts: { invalid: boolean }) => Promise<string | null>
+let tokenAsker: TokenAsker | null = null
+let pendingAsk: Promise<string | null> | null = null
+
+export function setTokenAsker(fn: TokenAsker | null): void {
+  tokenAsker = fn
+}
+
+export function clearApiToken(): void {
+  writeToken('')
+}
+
+function askForToken(invalid: boolean): Promise<string | null> {
+  if (!pendingAsk) {
+    const ask = tokenAsker
+      ? tokenAsker({ invalid })
+      : Promise.resolve(
+          (() => {
+            try {
+              return window.prompt('This FlowOps server requires an API token (the API_TOKEN it was started with):', '')
+            } catch {
+              return null
+            }
+          })(),
+        )
+    pendingAsk = ask.finally(() => {
+      pendingAsk = null
+    })
+  }
+  return pendingAsk
+}
+
+async function request<T>(path: string, init?: RequestInit, attempt = 0): Promise<T> {
   const token = readToken()
   const res = await fetch(`/api${path}`, {
     ...init,
@@ -31,12 +68,12 @@ async function request<T>(path: string, init?: RequestInit, retried = false): Pr
       ...(init?.headers ?? {}),
     },
   })
-  if (res.status === 401 && !retried) {
+  if (res.status === 401 && attempt < 3) {
     // The server was started with API_TOKEN: ask once, remember it in this browser.
-    const entered = window.prompt('This FlowOps server requires an API token (the API_TOKEN it was started with):', '')
-    if (entered) {
+    const entered = await askForToken(Boolean(token))
+    if (entered?.trim()) {
       writeToken(entered.trim())
-      return request<T>(path, init, true)
+      return request<T>(path, init, attempt + 1)
     }
   }
   if (!res.ok) {

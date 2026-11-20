@@ -5,6 +5,7 @@ import { NodeDrawer } from './components/NodeDrawer'
 import { Inspector } from './components/Inspector'
 import { LogsDrawer } from './components/LogsDrawer'
 import { HistoryPanel } from './components/HistoryPanel'
+import { TokenPrompt } from './components/TokenPrompt'
 import { useStore } from './store'
 
 const isEditable = (el: EventTarget | null) => {
@@ -72,6 +73,7 @@ export default function App() {
         <HistoryPanel />
         <Inspector />
       </div>
+      <TokenPrompt />
     </div>
   )
 }

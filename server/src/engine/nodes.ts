@@ -466,6 +466,9 @@ const handlers: Record<string, NodeHandler> = {
   },
 
   code: async (ctx) => {
+    if (config.publicAccess) {
+      throw new Error('The Code node is turned off on this public server (PUBLIC_ACCESS=true), because it could run any code on the machine. Use Edit Fields, Filter, Sort and the other data nodes instead.')
+    }
     const src = String(ctx.node.parameters.jsCode ?? '')
     const mode = (ctx.node.parameters.mode as string) ?? 'runOnceForAllItems'
     const logs = ctx.logs

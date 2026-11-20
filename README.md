@@ -51,7 +51,8 @@ npm start              # serves the API and the built editor from one process
 | Env var          | Effect |
 | ---------------- | ------ |
 | `API_TOKEN`      | Every `/api` request must send `Authorization: Bearer <token>`. **Required** when `HOST` is not loopback. |
-| `HOST`           | Interface to listen on (default `127.0.0.1`). The server refuses to start on any other address without `API_TOKEN`. |
+| `PUBLIC_ACCESS`  | `true` lets anyone use the editor and API with no token (`API_TOKEN` is ignored). The Code node is switched off in this mode. |
+| `HOST`           | Interface to listen on (default `127.0.0.1`). The server refuses to start on any other address without `API_TOKEN` or `PUBLIC_ACCESS=true`. |
 | `ENCRYPTION_KEY` | Key for AES-256-GCM credential encryption. **Required** when `NODE_ENV=production`. |
 | `PORT`           | Port (default `5175`). |
 | `PUBLIC_URL`     | Base URL used in Wait-node resume links (default `http://localhost:PORT`). |
@@ -64,8 +65,10 @@ See [`.env.example`](.env.example).
 
 > **Security note.** The Code node runs JavaScript in `node:vm`, which is an isolation
 > boundary, not a security sandbox. Anyone who can call the API can run code on the
-> server, which is why the API binds to localhost and requires a token otherwise. Don't
-> expose FlowOps to people you don't trust.
+> server, which is why the API binds to localhost and requires a token otherwise. With
+> `PUBLIC_ACCESS=true` the Code node is disabled, but visitors can still edit or delete
+> any workflow and use any saved credential, so don't store paid API keys or a real SMTP
+> account on a public instance.
 
 ## Features
 

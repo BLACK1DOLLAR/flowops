@@ -172,7 +172,21 @@ export async function executeWorkflow(store: Store, params: RunParams): Promise<
   st.waitingNode = undefined
   if (resumingNode) st.nodeRuns = st.nodeRuns.filter((r) => !(r.nodeId === resumingNode && r.status === 'waiting'))
 
-  const allDelivered = (edges: Connection[]) => edges.every((e) => delivered.has(edgeKey(e)))
+  // Nodes this run can reach from its start node(s). An input wired from a node
+  // outside this set (e.g. a second trigger that didn't fire) will never
+  // deliver, so it must not hold the node back.
+  const live = new Set<string>(starts)
+  const liveStack = [...starts]
+  while (liveStack.length) {
+    const id = liveStack.pop()!
+    for (const c of outgoingByNode.get(id) ?? []) {
+      if (!live.has(c.target)) {
+        live.add(c.target)
+        liveStack.push(c.target)
+      }
+    }
+  }
+  const allDelivered = (edges: Connection[]) => edges.every((e) => !live.has(e.source) || delivered.has(edgeKey(e)))
 
   const isReady = (id: string): boolean => {
     const incoming = incomingByNode.get(id) ?? []

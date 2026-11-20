@@ -19,6 +19,26 @@ describe('engine: routing', () => {
     expect(outputOf(res, 'if', 1)).toEqual([{ n: 1 }])
   })
 
+  it('runs a node wired to two triggers when only one of them fires', async () => {
+    const wf = workflow(
+      [node('hook', 'webhook'), node('cron', 'schedule', { cron: '* * * * *' }), node('mark', 'set', { fields: { ran: true } })],
+      [edge('hook', 'mark'), edge('cron', 'mark')],
+    )
+    const res = await executeWorkflow(store, { workflow: wf, mode: 'production', trigger: { nodeId: 'hook', type: 'webhook', payload: { body: { a: 1 } } } })
+    expect(res.status).toBe('success')
+    expect(outputOf(res, 'mark')?.[0]).toMatchObject({ body: { a: 1 }, ran: true })
+  })
+
+  it('still waits for both branches of the same trigger at a Merge', async () => {
+    const wf = workflow(
+      [trigger(), source('a', [{ a: 1 }]), source('b', [{ b: 2 }]), node('m', 'merge', { mode: 'combine' })],
+      [edge('t', 'a'), edge('t', 'b'), edge('a', 'm', 0, 0), edge('b', 'm', 0, 1)],
+    )
+    const res = await run(wf)
+    expect(res.nodeRuns.filter((r) => r.nodeId === 'm')).toHaveLength(1)
+    expect(outputOf(res, 'm')).toEqual([{ a: 1, b: 2 }])
+  })
+
   it('feeds error-workflow input items to the start node', async () => {
     const wf = workflow([trigger(), node('c', 'code', { jsCode: 'return $input.all()' })], [edge('t', 'c')])
     const res = await executeWorkflow(store, { workflow: wf, mode: 'production', inputItems: [{ json: { error: 'boom' } }] })

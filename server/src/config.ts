@@ -11,8 +11,12 @@ export const config = {
   // must never be reachable from the network without authentication.
   host,
   isProduction,
+  // PUBLIC_ACCESS=true: anyone can use the editor and API with no token. The
+  // Code node is switched off in this mode, because it can run arbitrary code
+  // on the server (and read its secrets).
+  publicAccess: process.env.PUBLIC_ACCESS === 'true',
   // When set, every /api request must send `Authorization: Bearer <token>`.
-  apiToken: process.env.API_TOKEN ?? '',
+  apiToken: process.env.PUBLIC_ACCESS === 'true' ? '' : process.env.API_TOKEN ?? '',
   // Comma-separated browser origins allowed to call the API. Empty = no
   // cross-origin access (the editor talks to the API through the Vite proxy).
   corsOrigins: (process.env.CORS_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean),
@@ -41,9 +45,13 @@ export function assertSafeConfig(): void {
     }
     console.warn('[config] ENCRYPTION_KEY not set — using a derived development key. Set it in production.')
   }
+  if (config.publicAccess) {
+    console.warn('[config] PUBLIC_ACCESS=true — no API token required; anyone can view, edit and run workflows. The Code node is disabled.')
+    return
+  }
   if (!isLoopback(config.host) && !config.apiToken) {
     throw new Error(
-      `HOST=${config.host} exposes the API beyond this machine. Set API_TOKEN so requests must authenticate, or bind to 127.0.0.1.`,
+      `HOST=${config.host} exposes the API beyond this machine. Set API_TOKEN so requests must authenticate, set PUBLIC_ACCESS=true to allow anyone in (Code node disabled), or bind to 127.0.0.1.`,
     )
   }
 }

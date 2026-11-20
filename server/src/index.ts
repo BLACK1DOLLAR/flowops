@@ -53,7 +53,9 @@ async function main(): Promise<void> {
   app.use(createWebhookRouter(store, triggers, queue))
   app.use('/api', requireToken, express.json({ limit: '10mb' }), createApi(store, triggers, queue))
 
-  app.get('/health', (_req, res) => res.json({ ok: true, store: config.databaseUrl ? 'postgres' : 'memory', queue: config.redisUrl ? 'bullmq' : 'inline' }))
+  app.get('/health', (_req, res) =>
+    res.json({ ok: true, store: config.databaseUrl ? 'postgres' : 'memory', queue: config.redisUrl ? 'bullmq' : 'inline', publicAccess: config.publicAccess }),
+  )
 
   // Serve the built editor (web/dist) when it exists, so one process runs everything.
   const webDist = process.env.WEB_DIST ?? join(dirname(fileURLToPath(import.meta.url)), '../../web/dist')
@@ -64,7 +66,7 @@ async function main(): Promise<void> {
   }
 
   app.listen(config.port, config.host, () => {
-    console.log(`[server] FlowOps API listening on http://${config.host}:${config.port}${config.apiToken ? ' (API token required)' : ''}`)
+    console.log(`[server] FlowOps API listening on http://${config.host}:${config.port}${config.apiToken ? ' (API token required)' : config.publicAccess ? ' (PUBLIC — no token)' : ''}`)
   })
 
   await triggers.registerAllActive()
